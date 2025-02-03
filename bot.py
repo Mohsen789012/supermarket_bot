@@ -1,6 +1,6 @@
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from dotenv import load_dotenv
 
 # Load the bot token from .env file
@@ -27,12 +27,26 @@ categories = {
     "حراجی": ["زرد چویه", "پشمک حاج عبدلله"]
 }
 
+# Persistent menu buttons
+persistent_menu = ReplyKeyboardMarkup(
+    [["🛍 سبد خرید", "🏠 شروع"], ["📚 راهنما", "📞 ارتباط با ما"]],
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
+
 # Start command
 async def start(update: Update, context):
     chat_id = update.message.chat_id
     keyboard = [[InlineKeyboardButton("🛍 مشاهده دسته‌بندی کالاها", callback_data="categories")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("سلام! به سوپرمارکت ما خوش آمدید 🛒‎", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "سلام! به سوپرمارکت ما خوش آمدید 🛒‎",
+        reply_markup=persistent_menu
+    )
+    await update.message.reply_text(
+        "لطفاً یک گزینه را انتخاب کنید:",
+        reply_markup=reply_markup
+    )
 
 # Show categories (edit previous message instead of sending a new one)
 async def categories_menu(update: Update, context):
@@ -70,15 +84,27 @@ async def show_products(update: Update, context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text(f"🛒 محصولات دسته {category}:", reply_markup=reply_markup)
 
+# Handle persistent menu button clicks
+async def handle_menu_buttons(update: Update, context):
+    text = update.message.text
+    if text == "🛍 سبد خرید":
+        await update.message.reply_text("سبد خرید شما خالی است.")
+    elif text == "🏠 شروع":
+        await start(update, context)
+    elif text == "📚 راهنما":
+        await update.message.reply_text("راهنمای استفاده از ربات:\n\n1. برای مشاهده محصولات، از دکمه 'شروع' استفاده کنید.\n2. برای افزودن محصول به سبد خرید، روی محصول کلیک کنید.\n3. برای ارتباط با ما، از دکمه 'ارتباط با ما' استفاده کنید.")
+    elif text == "📞 ارتباط با ما":
+        await update.message.reply_text("برای ارتباط با ما، لطفاً به آدرس زیر پیام دهید:\n@example_support")
+
 # Main function  
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(categories_menu, pattern="categories"))
     app.add_handler(CallbackQueryHandler(show_products))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons))
     print("Bot is running...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
