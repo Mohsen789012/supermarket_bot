@@ -1,6 +1,6 @@
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ChatMemberHandler
 from dotenv import load_dotenv
 
 # Load the bot token from .env file
@@ -34,21 +34,30 @@ persistent_menu = ReplyKeyboardMarkup(
     one_time_keyboard=False
 )
 
-# Start command
+# Function to send start message automatically
 async def start(update: Update, context):
-    chat_id = update.message.chat_id
+    chat_id = update.effective_chat.id
     keyboard = [[InlineKeyboardButton("🛍 مشاهده دسته‌بندی کالاها", callback_data="categories")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "سلام! به سوپرمارکت ما خوش آمدید 🛒‎",
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="سلام! به سوپرمارکت ما خوش آمدید 🛒‎",
         reply_markup=persistent_menu
     )
-    await update.message.reply_text(
-        "لطفاً یک گزینه را انتخاب کنید:",
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="لطفاً یک گزینه را انتخاب کنید:",
         reply_markup=reply_markup
     )
 
-# Show categories (edit previous message instead of sending a new one)
+# Function to handle when user starts the bot or joins
+async def user_joined(update: Update, context):
+    chat_member = update.chat_member
+    if chat_member.new_chat_member.status == "member":
+        await start(update, context)
+
+# Show categories
 async def categories_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -57,15 +66,15 @@ async def categories_menu(update: Update, context):
     category_list = list(categories.keys())
 
     for i in range(0, len(category_list), 2):  # Arrange categories in pairs
-        row = [InlineKeyboardButton(category_list[i] + "‎", callback_data=category_list[i])]
+        row = [InlineKeyboardButton(category_list[i], callback_data=category_list[i])]
         if i + 1 < len(category_list):
-            row.append(InlineKeyboardButton(category_list[i + 1] + "‎", callback_data=category_list[i + 1]))
+            row.append(InlineKeyboardButton(category_list[i + 1], callback_data=category_list[i + 1]))
         keyboard.append(row)
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.edit_text("🔹 لطفاً یک دسته‌بندی را انتخاب کنید:", reply_markup=reply_markup)
 
-# Show products in selected category (edit previous message)
+# Show products in selected category
 async def show_products(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -74,12 +83,12 @@ async def show_products(update: Update, context):
     if category in categories:
         keyboard = []
         for i in range(0, len(categories[category]), 2):
-            row = [InlineKeyboardButton(categories[category][i] + "‎", callback_data=f"product_{categories[category][i]}")]
+            row = [InlineKeyboardButton(categories[category][i], callback_data=f"product_{categories[category][i]}")]
             if i + 1 < len(categories[category]):
-                row.append(InlineKeyboardButton(categories[category][i + 1] + "‎", callback_data=f"product_{categories[category][i + 1]}"))
+                row.append(InlineKeyboardButton(categories[category][i + 1], callback_data=f"product_{categories[category][i + 1]}"))
             keyboard.append(row)
 
-        # Add a back button to return to categories
+        # Add a back button
         keyboard.append([InlineKeyboardButton("🔙 بازگشت به دسته‌بندی‌ها", callback_data="categories")])
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text(f"🛒 محصولات دسته {category}:", reply_markup=reply_markup)
@@ -99,10 +108,14 @@ async def handle_menu_buttons(update: Update, context):
 # Main function  
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(categories_menu, pattern="categories"))
-    app.add_handler(CallbackQueryHandler(show_products))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons))
+
+    # Handlers
+    app.add_handler(CommandHandler("start", start))  # Handle /start
+    app.add_handler(ChatMemberHandler(user_joined, ChatMemberHandler.MY_CHAT_MEMBER))  # Detect new users
+    app.add_handler(CallbackQueryHandler(categories_menu, pattern="categories"))  # Show categories
+    app.add_handler(CallbackQueryHandler(show_products))  # Show products
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons))  # Handle menu buttons
+
     print("Bot is running...")
     app.run_polling()
 
